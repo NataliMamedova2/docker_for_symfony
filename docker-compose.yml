@@ -1,0 +1,82 @@
+version: '2'
+
+services:
+    redis:
+        container_name: gb_redis
+        image: redis:alpine
+        ports:
+            - "6379:6379"
+        networks:
+            vpcbr:
+                ipv4_address: 10.5.0.4
+    php:
+        container_name: gb_phpfpm
+        build:
+            context: php7-fpm
+            args:
+                TIMEZONE: ${TIMEZONE}
+        #        ports:
+        #            - "80:8000"
+        networks:
+            vpcbr:
+                ipv4_address: 10.5.0.2
+        volumes:
+            - ${SYMFONY_APP_PATH}:/var/www/symfony
+            - ./logs/symfony:/var/www/symfony/app/logs
+        links:
+            - redis
+    nginx:
+        container_name: gb_nginx
+        build: nginx
+        ports:
+            - 80:80
+        volumes_from:
+            - php
+        volumes:
+            - ./logs/nginx/:/var/log/nginx
+        networks:
+            vpcbr:
+                ipv4_address: 10.5.0.9
+    elasticsearch:
+        image: docker.elastic.co/elasticsearch/elasticsearch:6.4.0
+        container_name: gb_elastic
+        environment:
+            - cluster.name=docker-cluster
+            - bootstrap.memory_lock=true
+            - "ES_JAVA_OPTS=-Xms512m -Xmx512m"
+        ulimits:
+            memlock:
+                soft: -1
+                hard: -1
+        volumes:
+            - esdata1:/usr/share/elasticsearch/data
+        ports:
+            - "9200:9200"
+        networks:
+            vpcbr:
+                ipv4_address: 10.5.0.7
+    kibana:
+        image: docker.elastic.co/kibana/kibana:6.4.0
+        container_name: gb_kibana
+        volumes:
+            - ./kibana/kibana.yml:/usr/share/kibana/config/kibana.yml
+        environment:
+            ELASTICSEARCH_URL: http://10.5.0.7:9200
+        ports:
+            - "5601:5601"
+        links:
+            - elasticsearch
+        networks:
+            vpcbr:
+                ipv4_address: 10.5.0.8
+volumes:
+    esdata1:
+        driver: local
+
+networks:
+    vpcbr:
+        driver: bridge
+        ipam:
+            config:
+            - subnet: 10.5.0.0/16
+              gateway: 10.5.0.1
